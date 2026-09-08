@@ -41,15 +41,19 @@ vetor = [ ...one-hot de 20 gêneros, ano normalizado, nota normalizada, tipo (fi
   viram one-hot normalizado, ano e nota são escalados para 0–1, tipo é 0
   (filme) ou 1 (série), e a classificação indicativa (G/PG/PG-13/R) vira um
   valor de 0.1 a 0.8.
-- **Usuário** (`buildUserVector`, calculado uma vez no cadastro e guardado
-  no Qdrant): os gêneros favoritos escolhidos no cadastro viram pesos nesse
-  mesmo vetor de gêneros; se o usuário também marcar títulos que já curtiu,
-  o vetor deles é misturado (60% preferência declarada + 40% histórico,
-  mesma lógica de "média do histórico de compras" do projeto original). A
-  **idade** não vira peso de gênero (para não estereotipar "jovem gosta de
-  ação") — ela é traduzida para uma classificação indicativa alvo, no mesmo
-  eixo usado pelos filmes. O **sexo** é armazenado no perfil mas não
-  influencia o vetor.
+- **Usuário** (`buildUserVector`): não fica guardado em lugar nenhum — é
+  recalculado a cada request de recomendação, a partir do perfil atual no
+  SQLite. Os gêneros favoritos escolhidos no cadastro viram pesos nesse
+  mesmo vetor de gêneros; esse "histórico" que entra na mistura (60%
+  preferência declarada + 40% histórico, mesma lógica de "média do
+  histórico de compras" do projeto original) não é só o que foi marcado no
+  formulário — vai se ampliando com o uso: títulos avaliados bem (nota ≥ 7)
+  e títulos marcados como "já vi" (exceto os avaliados mal) entram na
+  mesma conta, então o perfil se ajusta com o tempo em vez de ficar
+  congelado na resposta inicial do cadastro. A **idade** não vira peso de
+  gênero (para não estereotipar "jovem gosta de ação") — ela é traduzida
+  para uma classificação indicativa alvo, no mesmo eixo usado pelos filmes.
+  O **sexo** é armazenado no perfil mas não influencia o vetor.
 
 Só o catálogo mora no Qdrant — é o único dado que de fato usa busca por
 similaridade (retrieval acima, e "títulos parecidos"). Perfis, avaliações e
@@ -171,7 +175,8 @@ fallback — o `MovieCard` já lida com isso automaticamente.
   projeto que de fato precisa de busca por similaridade.
 - SQLite (`backend/src/db/sqlite.js`, arquivo em `sqlite_data`, sem
   container próprio): perfis (`users`), avaliações/feedback coletivo
-  (`feedback`) e comentários (`comments`) — ver seção acima.
+  (`feedback`), comentários (`comments`) e "já vi" (`watched`) — ver seção
+  acima.
 
 ## Rodando com Docker
 
@@ -243,7 +248,9 @@ Copie `.env.example` para `.env` para customizar:
 | PUT    | `/api/auth/me`          | Edita o perfil — inclusive "virar conta" (adicionar e-mail/senha a um perfil anônimo) |
 | POST   | `/api/auth/favorite`    | Marca/desmarca o filme ou série favorita do perfil (um de cada tipo) |
 | GET    | `/api/recommendations`  | Candidatos + amostra negativa para o front treinar o modelo (requer token) |
-| POST   | `/api/feedback`         | Avalia um título (0-10, estrelas) — requer conta; alimenta o feedback coletivo |
+| POST   | `/api/feedback`         | Avalia um título (0-10, estrelas) — requer conta; alimenta o feedback coletivo e o próprio vetor de recomendação |
+| GET    | `/api/watched`          | Lista os ids marcados como "já vi" pelo perfil (requer perfil — guest ou conta) |
+| POST   | `/api/watched`          | Marca/desmarca "já vi" (`{movieId, watched}`) — sincroniza com o `localStorage` do navegador e também alimenta o vetor de recomendação |
 | GET    | `/api/ranking/favorites` | Ranking dos títulos mais marcados como favorito — `?type=filme\|serie&limit=N` |
 
 Filtros/ordenação de `GET /api/movies` (todos opcionais, combináveis):

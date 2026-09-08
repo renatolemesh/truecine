@@ -45,4 +45,6 @@ export const api = {
   getExtras: (movieId) => request(`/movies/${movieId}/extras`),
   getSimilar: (movieId) => request(`/movies/${movieId}/similar`),
   getFavoritesRanking: (type, limit) => request(`/ranking/favorites?${buildQuery({ type, limit })}`),
+  getWatched: () => request('/watched'),
+  setWatched: (movieId, watched) => request('/watched', { method: 'POST', body: JSON.stringify({ movieId, watched }) }),
 };

@@ -22,6 +22,7 @@ const commentsRoutes = require('./routes/comments');
 const providersRoutes = require('./routes/providers');
 const extrasRoutes = require('./routes/extras');
 const rankingRoutes = require('./routes/ranking');
+const watchedRoutes = require('./routes/watched');
 
 const app = express();
 // Backend é só API JSON (o HTML/CSS/JS do site é servido pelo nginx do
@@ -44,6 +45,7 @@ app.use('/api/movies/:movieId/comments', commentsRoutes);
 app.use('/api/movies/:movieId/providers', providersRoutes);
 app.use('/api/movies/:movieId/extras', extrasRoutes);
 app.use('/api/ranking', rankingRoutes);
+app.use('/api/watched', watchedRoutes);
 
 async function start() {
   console.log('Aguardando Qdrant ficar disponível...');

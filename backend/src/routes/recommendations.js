@@ -11,6 +11,7 @@ const router = express.Router();
 
 const findUserStmt = db.prepare('SELECT * FROM users WHERE id = ?');
 const ownFeedbackStmt = db.prepare('SELECT movie_id, rating FROM feedback WHERE user_id = ?');
+const ownWatchedStmt = db.prepare('SELECT movie_id FROM watched WHERE user_id = ?');
 
 const DEFAULT_CANDIDATES = 150;
 const MAX_CANDIDATES = 300;
@@ -135,19 +136,29 @@ router.get('/', requireAuth, async (req, res) => {
 
     const ownFeedback = ownFeedbackStmt.all(req.userId);
     const ratedIds = ownFeedback.map((r) => r.movie_id);
+    const watchedIds = ownWatchedStmt.all(req.userId).map((r) => r.movie_id);
 
     // O vetor do usuário não fica congelado no que foi informado no
-    // cadastro: títulos avaliados bem depois (estrelas no card) entram
-    // aqui junto com os marcados como "já curtiu" no formulário — o perfil
-    // vai se ajustando com o uso real, não só com a resposta inicial. Não
-    // é guardado em lugar nenhum: como o vetor é recalculado a cada request
-    // (ver services/vectorizer.js), continuar realimentando é só ampliar de
-    // onde vêm os "títulos curtidos" que entram nessa conta.
+    // cadastro: títulos avaliados bem ou marcados como "já vi" depois
+    // entram aqui junto com os marcados como "já curtiu" no formulário — o
+    // perfil vai se ajustando com o uso real, não só com a resposta
+    // inicial. Não é guardado em lugar nenhum: como o vetor é recalculado a
+    // cada request (ver services/vectorizer.js), continuar realimentando é
+    // só ampliar de onde vêm os "títulos curtidos" que entram nessa conta.
+    //
+    // "Já vi" sozinho é um sinal positivo mais fraco que uma nota alta (só
+    // significa que teve interesse em assistir, não que gostou) — mas não
+    // deve contar como positivo se o título também foi avaliado mal: quem
+    // assistiu e detestou não devia puxar o vetor pro mesmo lugar.
     const likedMovieIds = JSON.parse(profile.liked_movie_ids || '[]');
+    const dislikedIds = new Set(
+      ownFeedback.filter((r) => r.rating < COLLAB_POSITIVE_RATING).map((r) => r.movie_id),
+    );
     const positivelyRatedIds = ownFeedback
       .filter((r) => r.rating >= COLLAB_POSITIVE_RATING)
       .map((r) => r.movie_id);
-    const likedMovieIdSet = new Set([...likedMovieIds, ...positivelyRatedIds]);
+    const watchedNotDislikedIds = watchedIds.filter((id) => !dislikedIds.has(id));
+    const likedMovieIdSet = new Set([...likedMovieIds, ...positivelyRatedIds, ...watchedNotDislikedIds]);
     const likedMovies = [...likedMovieIdSet].map((id) => allMovies.find((m) => m.id === id)).filter(Boolean);
 
     const userVector = buildUserVector({
@@ -158,11 +169,11 @@ router.get('/', requireAuth, async (req, res) => {
     });
 
     // Título que o usuário já avaliou (nas estrelas do card, qualquer
-    // nota) não devia continuar aparecendo como "recomendado" — se já deu
-    // nota é porque já assistiu/já formou opinião, recomendar de novo não
-    // ajuda em nada (e ficava "preso" ali até a próxima vez que a rede
-    // treinasse com uma amostra diferente, o que é confuso).
-    const excludeIds = new Set([...likedMovieIds, ...ratedIds]);
+    // nota) ou já marcou como "já vi" não devia continuar aparecendo como
+    // "recomendado" — recomendar de novo não ajuda em nada (e ficava
+    // "preso" ali até a próxima vez que a rede treinasse com uma amostra
+    // diferente, o que é confuso).
+    const excludeIds = new Set([...likedMovieIds, ...ratedIds, ...watchedIds]);
 
     const results = await client.search(config.MOVIES_COLLECTION, {
       vector: userVector,

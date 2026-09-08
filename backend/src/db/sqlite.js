@@ -73,6 +73,18 @@ function migrate() {
       created_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_comments_movie ON comments(movie_id, created_at DESC);
+
+    -- "Já vi" — id natural (user_id:movie_id) igual feedback, pra marcar de
+    -- novo não duplicar linha. Não exige conta (só um perfil, guest ou
+    -- conta — mesmo padrão de favorite), e alimenta tanto a exclusão quanto
+    -- o vetor de recomendação (ver routes/recommendations.js).
+    CREATE TABLE IF NOT EXISTS watched (
+      id TEXT PRIMARY KEY,
+      movie_id TEXT NOT NULL,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_watched_user ON watched(user_id);
   `);
 }
 

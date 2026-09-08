@@ -41,7 +41,9 @@ export default function App() {
   const [yearMin, setYearMin] = useState('');
   const [yearMax, setYearMax] = useState('');
 
-  const { watchedIds, isWatched, toggleWatched, showWatched, setShowWatched } = useWatched();
+  const {
+    watchedIds, isWatched, toggleWatched, mergeWatchedIds, showWatched, setShowWatched,
+  } = useWatched();
   const { isInWatchlist, toggleWatchlist, removeFromWatchlist } = useWatchlist();
   const { getRating, setRating } = useRating();
 
@@ -173,6 +175,18 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile, genres]);
 
+  // "Já vi" é local por padrão (funciona sem login), mas quando existe um
+  // perfil (guest ou conta) busca o que já foi marcado em outra sessão/
+  // dispositivo e junta com o que só existia neste navegador — sem apagar
+  // nada, só união. Depende do id (não do objeto `profile` inteiro, que
+  // muda de referência a cada favorito/edição) pra não refazer essa busca
+  // à toa.
+  useEffect(() => {
+    if (!profile) return;
+    api.getWatched().then((d) => mergeWatchedIds(d.movieIds)).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.id]);
+
   function loadMovies(page) {
     const params = { ...buildFilterParams(), page, pageSize: PAGE_SIZE };
     if (sort && sort !== 'popularity') params.sort = sort;
@@ -296,6 +310,16 @@ export default function App() {
     if (!wasWatched && isInWatchlist(id)) removeFromWatchlist(id);
   }
 
+  // Sem perfil nenhum (só navegando), "já vi" fica só local, como sempre
+  // foi. Com perfil (guest ou conta), também persiste no backend — sem
+  // isso, "já vi" não sobrevive a outra sessão/dispositivo nem alimenta o
+  // vetor de recomendação (ver routes/recommendations.js). Fire-and-forget:
+  // o estado local já mudou de forma otimista, uma falha aqui não trava a UI.
+  function syncWatchedToServer(id, watched) {
+    if (!profile) return;
+    api.setWatched(id, watched).catch((e) => console.error(e));
+  }
+
   function handleToggleWatched(id) {
     const wasWatched = isWatched(id);
     toggleWatched(id);
@@ -304,6 +328,7 @@ export default function App() {
       setTotalMovies((tot) => Math.max(0, tot - 1));
     }
     syncWatchlistOnWatch(id, wasWatched);
+    syncWatchedToServer(id, !wasWatched);
   }
 
   // Recomendações usam o toggle "cru" (sem mexer no array de catálogo,
@@ -313,6 +338,7 @@ export default function App() {
     const wasWatched = isWatched(id);
     toggleWatched(id);
     syncWatchlistOnWatch(id, wasWatched);
+    syncWatchedToServer(id, !wasWatched);
   }
 
   function handleRate(id, score) {
