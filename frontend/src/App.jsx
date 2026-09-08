@@ -397,7 +397,12 @@ export default function App() {
               </button>
             )}
           />
-          {recStage === 'done' && visibleRecommendations.length > 0 && (
+          {/* Só afirma "ordenado por rede neural" quando isso é literalmente
+              verdade — o worker devolve trained:false (mantendo a ordem por
+              similaridade de vetor do Qdrant, sem tocar na rede) quando não
+              há candidatos/negativos suficientes pra treinar (ver
+              MIN_EXAMPLES em workers/recommendationWorker.js). */}
+          {recStage === 'done' && modelInfo && visibleRecommendations.length > 0 && (
             <p className="model-status">{t('rec.status')}</p>
           )}
         </>
