@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+*.log
+# Arquivos de progresso dos scripts de background (fetch-posters.js,
+# fetch-providers.js) — intermediários, regeneráveis, não fazem sentido
+# versionados (o resultado final aplicado vai pra backend/src/data/*.json).
+backend/scripts/*.progress.jsonl
