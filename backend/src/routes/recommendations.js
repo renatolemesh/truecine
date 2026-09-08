@@ -10,7 +10,7 @@ const { buildUserVector } = require('../services/vectorizer');
 const router = express.Router();
 
 const findUserStmt = db.prepare('SELECT * FROM users WHERE id = ?');
-const ownFeedbackStmt = db.prepare('SELECT movie_id FROM feedback WHERE user_id = ?');
+const ownFeedbackStmt = db.prepare('SELECT movie_id, rating FROM feedback WHERE user_id = ?');
 
 const DEFAULT_CANDIDATES = 150;
 const MAX_CANDIDATES = 300;
@@ -133,8 +133,22 @@ router.get('/', requireAuth, async (req, res) => {
     const profile = findUserStmt.get(req.userId);
     if (!profile) return res.status(404).json({ error: 'Perfil não encontrado' });
 
+    const ownFeedback = ownFeedbackStmt.all(req.userId);
+    const ratedIds = ownFeedback.map((r) => r.movie_id);
+
+    // O vetor do usuário não fica congelado no que foi informado no
+    // cadastro: títulos avaliados bem depois (estrelas no card) entram
+    // aqui junto com os marcados como "já curtiu" no formulário — o perfil
+    // vai se ajustando com o uso real, não só com a resposta inicial. Não
+    // é guardado em lugar nenhum: como o vetor é recalculado a cada request
+    // (ver services/vectorizer.js), continuar realimentando é só ampliar de
+    // onde vêm os "títulos curtidos" que entram nessa conta.
     const likedMovieIds = JSON.parse(profile.liked_movie_ids || '[]');
-    const likedMovies = likedMovieIds.map((id) => allMovies.find((m) => m.id === id)).filter(Boolean);
+    const positivelyRatedIds = ownFeedback
+      .filter((r) => r.rating >= COLLAB_POSITIVE_RATING)
+      .map((r) => r.movie_id);
+    const likedMovieIdSet = new Set([...likedMovieIds, ...positivelyRatedIds]);
+    const likedMovies = [...likedMovieIdSet].map((id) => allMovies.find((m) => m.id === id)).filter(Boolean);
 
     const userVector = buildUserVector({
       favoriteGenres: JSON.parse(profile.favorite_genres || '[]'),
@@ -148,7 +162,6 @@ router.get('/', requireAuth, async (req, res) => {
     // nota é porque já assistiu/já formou opinião, recomendar de novo não
     // ajuda em nada (e ficava "preso" ali até a próxima vez que a rede
     // treinasse com uma amostra diferente, o que é confuso).
-    const ratedIds = ownFeedbackStmt.all(req.userId).map((r) => r.movie_id);
     const excludeIds = new Set([...likedMovieIds, ...ratedIds]);
 
     const results = await client.search(config.MOVIES_COLLECTION, {
