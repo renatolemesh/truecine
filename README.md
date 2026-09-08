@@ -1,4 +1,4 @@
-# True Cine — recomendação de filmes e séries
+# TrueCine — recomendação de filmes e séries
 
 Projeto de estudo inspirado no [exemplo de recomendação de e-commerce com
 TensorFlow.js](https://github.com/unipds-engenharia-de-ia-aplicada/engenharia-de-software-com-ia-aplicada/blob/main/modulo01-fundamentos-de-ia-e-llms-para-programadores/exemplo-01-ecommerce-recomendations-z/parte05-ecommerce-recomendations-with-tensorflow/src/workers/modelTrainingWorker.js),
@@ -159,14 +159,21 @@ fallback — o `MovieCard` já lida com isso automaticamente.
 
 - `frontend/`: React + Vite, servido por nginx (que também faz proxy de
   `/api` para o backend). Home com grade de filmes/séries, filtros (tipo,
-  gênero multiseleção, nota, ano, ordenação), busca, paginação, botão
-  "🎲 Sortear" (roleta que escolhe N títulos aleatórios respeitando os
-  filtros ativos), marcar título como "já vi" (oculta do catálogo, com
-  opção de mostrar/desfazer — persistido em `localStorage`), modais de
-  **Entrar** e **Cadastrar** (com dois modos: criar conta ou só informar
-  dados), interface bilíngue PT/EN (`src/i18n/`, sem biblioteca externa), e
-  o Web Worker de TensorFlow.js que faz o re-ranking das recomendações
+  gênero multiseleção, nota, ano, plataforma de streaming, ordenação),
+  busca (funciona digitando em PT ou EN), paginação, botão "🎲 Sortear"
+  (roleta que escolhe N títulos aleatórios respeitando os filtros ativos),
+  modais de **Entrar** e **Cadastrar** (dois modos: criar conta ou só
+  informar dados) e de **editar perfil** (inclusive "virar conta" depois),
+  interface bilíngue PT/EN (`src/i18n/`, sem biblioteca externa), e o Web
+  Worker de TensorFlow.js que faz o re-ranking das recomendações
   (`src/workers/recommendationWorker.js`).
+  Por título: avaliação por estrelas, comentários, marcar "já vi" (oculta
+  do catálogo, com opção de mostrar/desfazer — local por padrão, sincroniza
+  com o backend quando existe um perfil), watchlist ("quero ver depois"),
+  favoritar (um filme + uma série por perfil, com ranking dos mais
+  favoritados entre todo mundo), e uma ficha completa com sinopse,
+  elenco/direção, trailer, "onde assistir" (região BR/US) e títulos
+  parecidos.
 - `backend/`: Node.js + Express. Autenticação (JWT), catálogo, e o endpoint
   de recomendações — que faz a etapa de *retrieval* no Qdrant e devolve
   candidatos + amostra negativa para o front treinar o modelo.
@@ -208,6 +215,27 @@ um túnel/port-forward de IDE): o frontend é servido por nginx e faz proxy de
 navegador só fala com a própria origem da página, então funciona igual não
 importa qual host/porta você usa para abrir `http://SEU_HOST:5173`. Não é
 necessário configurar nada extra.
+
+## Segurança
+
+Revisão feita ao expor o projeto pra internet (nginx + HTTPS externo):
+
+- `helmet` (headers de segurança padrão) e `express.json({ limit: '100kb' })`
+  contra payloads gigantes.
+- Rate limiting em 3 níveis (`backend/src/middleware/rateLimit.js`): login
+  (mais restrito, ignora tentativas certas), criação/edição de conta, e
+  escrita em geral (avaliar, comentar, favoritar, marcar "já vi").
+- Senha validada no servidor (mínimo 8 caracteres, letra + número — não só
+  no `<input>`), hash com bcrypt (12 rounds).
+- `JWT_SECRET` obrigatoriamente forte se exposto — o backend roda mesmo sem
+  configurar (pra não travar quem só está testando local), mas avisa **bem
+  alto** no log se estiver usando o valor padrão inseguro.
+- `CORS_ORIGIN` pra restringir a API a um domínio específico quando exposta.
+- Respostas públicas nunca vazam o id real de quem comentou (`isOwn`
+  calculado no servidor a partir do token de quem pediu, em vez do `userId`
+  cru) nem outros dados internos de outros usuários.
+- `UNIQUE` de e-mail garantido pelo próprio SQLite (ver seção acima) — não é
+  mais um "busca, se não achou cria" sujeito a race condition.
 
 ## Variáveis de ambiente
 
@@ -289,5 +317,3 @@ cd frontend && npm install && npm run dev
 - Gerar embeddings semânticos da sinopse (ex.: sentence-transformers) e
   concatenar ao vetor de conteúdo para capturar similaridade de enredo, não
   só de gênero.
-- Registrar interações (assistiu, avaliou) e realimentar o vetor do usuário
-  ao longo do tempo, em vez de só usar o que foi informado no cadastro.
